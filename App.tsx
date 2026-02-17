@@ -12,7 +12,7 @@ import { Auth } from './pages/Auth';
 import { User, Client, AppDocument } from './types';
 import { api } from './services/api';
 import { supabase } from './services/supabase';
-import { Loader2, Database } from 'lucide-react';
+import { Loader2, Database, AlertCircle, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   // Auth State
@@ -26,21 +26,39 @@ const App: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [documents, setDocuments] = useState<AppDocument[]>([]);
   const [dataLoading, setDataLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dbMissing, setDbMissing] = useState(false);
 
   // Initialize Auth Listener
   useEffect(() => {
-    // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setIsAuthenticated(!!session);
-      setAuthChecking(false);
-      if (session) loadData();
-    });
+    const initAuth = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.warn("Auth session check warning:", error.message);
+        }
+        const session = data?.session;
+        setIsAuthenticated(!!session);
+        if (session) {
+          loadData();
+        }
+      } catch (err) {
+        console.error("Critical Auth Error:", err);
+        // Fallback to unauthenticated state so app renders login instead of white screen
+        setIsAuthenticated(false);
+      } finally {
+        setAuthChecking(false);
+      }
+    };
+
+    initAuth();
 
     // Listen for changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
-      if (session) loadData();
-      else {
+      if (session) {
+        if (!user) loadData(); 
+      } else {
         setUser(null);
         setClients([]);
         setDocuments([]);
@@ -52,9 +70,15 @@ const App: React.FC = () => {
 
   const loadData = async () => {
     setDataLoading(true);
+    setError(null);
+    setDbMissing(false);
+    
     try {
-      const [currentUser, fetchedClients, fetchedDocs] = await Promise.all([
-        api.getCurrentUser(),
+      // 1. Check Profile
+      const currentUser = await api.getCurrentUser();
+      
+      // 2. Fetch Business Data (only if profile exists, or try anyway to catch db errors)
+      const [fetchedClients, fetchedDocs] = await Promise.all([
         api.getClients(),
         api.getDocuments()
       ]);
@@ -62,8 +86,16 @@ const App: React.FC = () => {
       if (currentUser) setUser(currentUser);
       setClients(fetchedClients);
       setDocuments(fetchedDocs);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to load data", error);
+      
+      // Check for specific Supabase error codes for "Relation does not exist" (missing tables)
+      if (error?.code === '42P01' || error?.message?.includes('relation') || error?.message?.includes('does not exist')) {
+        setDbMissing(true);
+        setError("Database tables are missing.");
+      } else {
+        setError(error.message || "Failed to load business data. Please check your connection.");
+      }
     } finally {
       setDataLoading(false);
     }
@@ -78,23 +110,21 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setView('dashboard');
+    setUser(null);
   };
 
   const handleCreateDocument = async (doc: AppDocument) => {
-    // Optimistic update
     const tempId = doc.id;
     setDocuments([doc, ...documents]);
     setView('documents');
 
     try {
       const created = await api.createDocument(doc);
-      // Replace temp doc with real one from DB
       setDocuments(prev => prev.map(d => d.id === tempId ? created : d));
     } catch (e) {
       console.error(e);
-      // Revert on error
       setDocuments(prev => prev.filter(d => d.id !== tempId));
-      alert("Failed to save document");
+      alert("Failed to save document. Check database permissions.");
     }
   };
 
@@ -155,36 +185,52 @@ const App: React.FC = () => {
       );
     }
 
-    if (isAuthenticated && !user && !dataLoading) {
+    // Database Setup Required (Missing Tables OR Missing Profile)
+    if ((dbMissing || (isAuthenticated && !user && !dataLoading)) && !error?.includes("fetch")) {
       return (
-        <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8 animate-in fade-in slide-in-from-bottom-4">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 animate-in fade-in slide-in-from-bottom-4">
            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6">
               <Database size={32} />
            </div>
            <h2 className="text-2xl font-bold text-slate-800 mb-3">Database Setup Required</h2>
            <p className="text-slate-500 max-w-md mb-8 leading-relaxed">
-             We couldn't access your profile. This usually happens if the <strong>Database Tables</strong> haven't been created in Supabase yet.
+             {dbMissing 
+               ? "The database tables are missing. The app cannot function without them." 
+               : "We couldn't find your user profile. This usually happens if the database tables haven't been created yet."}
            </p>
            <div className="bg-slate-50 p-6 rounded-xl text-left max-w-lg w-full border border-slate-200 shadow-sm">
               <p className="text-sm font-bold text-slate-700 mb-2">How to fix this:</p>
               <ol className="list-decimal list-inside text-sm text-slate-600 space-y-2">
-                <li>Go to your <a href="https://supabase.com/dashboard" target="_blank" className="text-orange-600 hover:underline">Supabase Dashboard</a>.</li>
+                <li>Go to your <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-orange-600 hover:underline">Supabase Dashboard</a>.</li>
                 <li>Open the <strong>SQL Editor</strong> tab.</li>
-                <li>Paste and Run the SQL script provided in the previous step.</li>
+                <li>Paste and Run the <strong>Database SQL Script</strong>.</li>
                 <li>Refresh this page.</li>
               </ol>
            </div>
            <button 
              onClick={() => window.location.reload()}
-             className="mt-8 px-6 py-3 bg-slate-900 text-white rounded-full text-sm font-medium hover:bg-black transition-colors shadow-lg shadow-slate-200"
+             className="mt-8 px-6 py-3 bg-slate-900 text-white rounded-full text-sm font-medium hover:bg-black transition-colors shadow-lg shadow-slate-200 flex items-center"
            >
+             <RefreshCw size={16} className="mr-2" />
              I've ran the script, Refresh
            </button>
         </div>
       )
     }
 
-    // Pass safe default props even if data is empty
+    if (error && !user) {
+         return (
+            <div className="flex flex-col items-center justify-center h-[60vh] text-center p-8">
+               <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6">
+                  <AlertCircle size={32} />
+               </div>
+               <h2 className="text-2xl font-bold text-slate-800 mb-3">Connection Error</h2>
+               <p className="text-slate-500 max-w-md mb-8">{error}</p>
+               <button onClick={() => window.location.reload()} className="px-6 py-3 bg-slate-900 text-white rounded-full">Retry</button>
+            </div>
+         )
+    }
+
     switch(view) {
       case 'dashboard': return <Dashboard documents={documents} clients={clients} />;
       case 'documents': return (

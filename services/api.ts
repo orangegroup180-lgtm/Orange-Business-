@@ -13,7 +13,13 @@ export const api = {
       .eq('id', user.id)
       .single();
     
-    if (error || !data) return null;
+    // If table doesn't exist (42P01) or row missing (PGRST116), return null
+    if (error || !data) {
+      if (error && error.code !== 'PGRST116') {
+        console.error("Profile fetch error:", error);
+      }
+      return null;
+    }
 
     return {
       id: data.id,
@@ -53,9 +59,13 @@ export const api = {
   // Clients
   getClients: async (): Promise<Client[]> => {
     const { data, error } = await supabase.from('clients').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
     
-    return data.map((c: any) => ({
+    if (error) {
+      console.error("Get Clients Error:", error);
+      throw error;
+    }
+    
+    return (data || []).map((c: any) => ({
       id: c.id,
       name: c.name,
       email: c.email,
@@ -63,7 +73,7 @@ export const api = {
       company: c.company,
       address: c.address,
       status: c.status,
-      totalSpent: Number(c.total_spent),
+      totalSpent: Number(c.total_spent || 0),
       lastContact: c.last_contact,
       notes: c.notes
     }));
@@ -71,7 +81,7 @@ export const api = {
 
   createClient: async (client: Client) => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("No user");
+    if (!user) throw new Error("No authenticated user");
 
     // We let Supabase generate the UUID for ID
     const { data, error } = await supabase.from('clients').insert({
@@ -99,27 +109,31 @@ export const api = {
   // Documents
   getDocuments: async (): Promise<AppDocument[]> => {
     const { data, error } = await supabase.from('documents').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
+    
+    if (error) {
+      console.error("Get Documents Error:", error);
+      throw error;
+    }
 
-    return data.map((d: any) => ({
+    return (data || []).map((d: any) => ({
       id: d.id,
       clientId: d.client_id,
       type: d.type,
       status: d.status,
       date: d.date,
       dueDate: d.due_date,
-      subtotal: Number(d.subtotal),
-      tax: Number(d.tax),
-      total: Number(d.total),
-      items: d.items,
-      design: d.design,
+      subtotal: Number(d.subtotal || 0),
+      tax: Number(d.tax || 0),
+      total: Number(d.total || 0),
+      items: d.items || [],
+      design: d.design || {},
       notes: d.notes
     }));
   },
 
   createDocument: async (doc: AppDocument) => {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("No user");
+    if (!user) throw new Error("No authenticated user");
 
     const { data, error } = await supabase.from('documents').insert({
       user_id: user.id,

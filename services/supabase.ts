@@ -27,7 +27,11 @@ const getEnvVar = (key: string, defaultValue: string) => {
 
 // Configuration: Credentials can be read from environment variables or fall back to default values
 // On Netlify, set SUPABASE_URL and SUPABASE_ANON_KEY in your Environment Variables
-const supabaseUrl = getEnvVar('SUPABASE_URL', 'https://kimwiqlypyaesieknmuz.supabase.co');
-const supabaseAnonKey = getEnvVar('SUPABASE_ANON_KEY', 'sb_publishable_aTQqx8TpSwRv5KJzlvXqZw_t_lJvRdI');
+const supabaseUrl = getEnvVar('SUPABASE_URL', 'https://your-project.supabase.co');
+const supabaseAnonKey = getEnvVar('SUPABASE_ANON_KEY', 'your-public-anon-key');
+
+if (supabaseUrl === 'https://your-project.supabase.co') {
+  console.warn('Supabase URL is not configured. Please set VITE_SUPABASE_URL or SUPABASE_URL environment variable.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
