@@ -17,6 +17,7 @@ export interface Client {
   email: string;
   phone: string;
   company: string;
+  address?: string;
   status: 'active' | 'inactive';
   totalSpent: number;
   lastContact: string;

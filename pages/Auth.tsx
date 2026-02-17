@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Card, Button, Input } from '../components/UI';
+import { supabase } from '../services/supabase';
+import { api } from '../services/api';
+import { ArrowRight, Lock, AlertCircle } from 'lucide-react';
 import { User } from '../types';
-import { storage } from '../services/storage';
-import { ArrowRight, Sparkles, CheckCircle2, Lock } from 'lucide-react';
 
 interface AuthProps {
   onLogin: () => void;
@@ -11,6 +12,7 @@ interface AuthProps {
 export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -21,27 +23,46 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
 
-    // Simulate network delay for realism
-    setTimeout(() => {
-      if (!isLogin) {
-        // Handle Sign Up: Create new user profile
-        const newUser: User = {
-          id: Math.random().toString(36).substr(2, 9),
-          name: formData.name,
+    try {
+      if (isLogin) {
+        // Sign In
+        const { error } = await supabase.auth.signInWithPassword({
           email: formData.email,
-          role: 'user',
-          plan: 'solo',
-          businessName: formData.businessName,
-          joinedDate: new Date().toISOString().split('T')[0]
-        };
-        storage.saveUser(newUser);
+          password: formData.password,
+        });
+        if (error) throw error;
+      } else {
+        // Sign Up
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (authError) throw authError;
+        if (authData.user) {
+          // Create User Profile in Database
+          const newUser: User = {
+            id: authData.user.id,
+            name: formData.name,
+            email: formData.email,
+            role: 'user',
+            plan: 'solo',
+            businessName: formData.businessName,
+            joinedDate: new Date().toISOString().split('T')[0]
+          };
+          await api.createProfile(newUser);
+        }
       }
       
-      storage.setAuth(true);
       onLogin();
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'An error occurred during authentication.');
+    } finally {
       setIsLoading(false);
-    }, 1200);
+    }
   };
 
   return (
@@ -65,19 +86,26 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           <div className="mb-6 flex justify-center">
             <div className="bg-slate-100/80 p-1 rounded-full flex w-full max-w-[200px]">
               <button 
-                onClick={() => setIsLogin(true)}
+                onClick={() => { setIsLogin(true); setError(null); }}
                 className={`flex-1 py-1.5 text-xs font-bold rounded-full transition-all ${isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 Sign In
               </button>
               <button 
-                onClick={() => setIsLogin(false)}
+                onClick={() => { setIsLogin(false); setError(null); }}
                 className={`flex-1 py-1.5 text-xs font-bold rounded-full transition-all ${!isLogin ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
               >
                 Sign Up
               </button>
             </div>
           </div>
+
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2 text-sm text-red-600">
+              <AlertCircle size={16} />
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
@@ -116,6 +144,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               type="password" 
               placeholder="••••••••"
               required 
+              minLength={6}
               value={formData.password}
               onChange={e => setFormData({...formData, password: e.target.value})}
               className="bg-white/50 focus:bg-white"
@@ -138,7 +167,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
           <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-400">
             <Lock size={12} />
-            <span>Secured by Orange ID</span>
+            <span>Secured by Supabase Auth</span>
           </div>
         </Card>
       </div>
