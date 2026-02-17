@@ -1,7 +1,7 @@
--- Copy and run this script in your Supabase SQL Editor
+-- Copy and run this script in your Supabase SQL Editor (https://supabase.com/dashboard/project/_/sql)
 
 -- 1. Create Profiles Table (Linked to Auth)
-create table profiles (
+create table if not exists profiles (
   id uuid references auth.users on delete cascade not null primary key,
   email text,
   name text,
@@ -13,7 +13,7 @@ create table profiles (
 );
 
 -- 2. Create Clients Table
-create table clients (
+create table if not exists clients (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users on delete cascade not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
@@ -29,7 +29,7 @@ create table clients (
 );
 
 -- 3. Create Documents Table
-create table documents (
+create table if not exists documents (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users on delete cascade not null,
   client_id uuid references clients(id) on delete set null,

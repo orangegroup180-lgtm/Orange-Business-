@@ -1,11 +1,31 @@
 import { GoogleGenAI } from "@google/genai";
 
 const getAiClient = () => {
-  // The API key is obtained exclusively from the environment variable.
-  const apiKey = process.env.API_KEY;
+  let apiKey: string | undefined;
+
+  // robust check for different environments (Vite, Next, Create React App, etc.)
+  try {
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      // @ts-ignore
+      apiKey = import.meta.env.API_KEY || import.meta.env.VITE_API_KEY;
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  if (!apiKey) {
+    try {
+      if (typeof process !== 'undefined' && process.env) {
+        apiKey = process.env.API_KEY;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
   
   if (!apiKey) {
-    console.warn("Gemini API Key is missing. Please set the API_KEY environment variable.");
+    console.warn("Gemini API Key is missing. Please set the API_KEY environment variable in Netlify.");
     return null;
   }
   return new GoogleGenAI({ apiKey });
@@ -32,7 +52,7 @@ export const generateEmail = async (
 ): Promise<string> => {
   try {
     const ai = getAiClient();
-    if (!ai) return "API Key is missing. Please configure your environment.";
+    if (!ai) return "API Key is missing. Please configure your environment variables in Netlify.";
 
     const prompt = `
       You are an expert executive assistant for a busy solopreneur. 
@@ -59,7 +79,7 @@ export const generateEmail = async (
   } catch (error: any) {
     console.error("AI Error:", JSON.stringify(error));
     if (error?.status === 403 || error?.code === 403 || JSON.stringify(error).includes("PERMISSION_DENIED")) {
-        return "Permission denied. Check API Key configuration.";
+        return "Permission denied. Please check your API Key configuration in Netlify.";
     }
     return "An error occurred while communicating with the AI assistant.";
   }
